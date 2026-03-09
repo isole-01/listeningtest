@@ -1,0 +1,10 @@
+{
+  "style_label": "Techno",
+  "base_url": "/static/audio",
+  "reference_folder": "reference",
+  "reference_files": ["piano-blues.mp3"],
+  "models": [
+    { "name": "0", "folder": "0", "files": ["1.wav"] },
+    { "name": "20", "folder": "20", "files": ["2.wav"] }
+  ]
+}

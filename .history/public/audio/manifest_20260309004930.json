@@ -1,0 +1,30 @@
+{
+  "style_label": "Techno",
+  "base_url": "/static/audio",
+  "reference": {
+    "folder": "reference",
+    "files": ["piano-blues.mp3"]
+  },
+  "conditions": [
+    {
+      "model": "text",
+      "step": 0,
+      "files": ["0_0.wav", "0_1.wav", "0_2.wav"]
+    },
+    {
+      "model": "text",
+      "step": 20,
+      "files": ["20_0.wav", "20_1.wav"]
+    },
+    {
+      "model": "mixed",
+      "step": 0,
+      "files": ["0_0.wav", "0_1.wav"]
+    },
+    {
+      "model": "mixed",
+      "step": 20,
+      "files": ["20_0.wav", "20_1.wav"]
+    }
+  ]
+}

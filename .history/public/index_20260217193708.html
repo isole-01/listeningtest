@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Listening Similarity Test</title>
+
+  <!-- jsPsych -->
+  <script src="https://unpkg.com/jspsych@7.3.4"></script>
+  <link rel="stylesheet" href="https://unpkg.com/jspsych@7.3.4/css/jspsych.css" />
+
+  <!-- Plugins -->
+  <script src="https://unpkg.com/@jspsych/plugin-preload@1.1.3"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-html-button-response@1.2.0"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-html-slider-response@1.1.3"></script>
+
+  <style>
+    body { background: #fff; }
+    .wrap { max-width: 900px; margin: 0 auto; }
+    audio { width: 100%; }
+    .small { opacity: .8; }
+    .error { color: #b00020; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+
+    /* Make the main content comfortable on phones */
+  .wrap { max-width: 720px; padding: 12px; }
+
+  /* jsPsych content defaults can feel wide; keep it tighter */
+  .jspsych-content { max-width: 720px; }
+
+  /* Slider container: narrower than full width, centered */
+  .slider-narrow {
+    max-width: 420px;
+    margin: 12px auto 0 auto;
+  }
+
+  /* Ensure slider + labels wrap nicely */
+  .slider-narrow .jspsych-slider {
+    width: 100%;
+  }
+
+  /* Prevent labels from getting squished on small screens */
+  .jspsych-html-slider-response-container {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Bigger tap targets */
+  button.jspsych-btn { padding: 12px 16px; }
+  audio { width: 100%; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap" id="root"></div>
+
+<script>
+/* =========================
+   CONFIG
+   ========================= */
+
+// FastAPI mounts PUBLIC_DIR at /static
+const STATIC_BASE = "/static";
+const MANIFEST_URL = `${STATIC_BASE}/audio/manifest.json`;
+const SUBMIT_URL = "/api/submit";
+
+// Optional behavior toggles
+const REQUIRE_FULL_LISTEN_BEFORE_CONTINUE = false; // disables Continue until audio ends
+const REQUIRE_PLAY_AT_LEAST_ONCE = false;          // disables Continue until audio has been played once
+
+/* =========================
+   Helpers
+   ========================= */
+
+function assert(cond, msg) { if (!cond) throw new Error(msg); }
+function randChoice(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+function makeId() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return "p_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16);
+}
+
+const participant_id = (() => {
+  const key = "listening_test_participant_id";
+  const existing = localStorage.getItem(key);
+  if (existing) return existing;
+  const id = makeId();
+  localStorage.setItem(key, id);
+  return id;
+})();
+
+function showFatal(err) {
+  const msg = (err && err.message) ? err.message : String(err);
+  document.getElementById("root").innerHTML = `
+    <div class="jspsych-content">
+      <h2 class="error">Error</h2>
+      <p class="error">${msg}</p>
+      <p class="small">Try opening <span class="mono">${MANIFEST_URL}</span> directly in your browser.</p>
+    </div>
+  `;
+}
+
+async function loadManifest() {
+  const r = await fetch(MANIFEST_URL, { cache: "no-store" });
+  if (!r.ok) throw new Error(`Failed to load manifest: ${MANIFEST_URL} (${r.status})`);
+  return await r.json();
+}
+
+/* =========================
+   Main
+   ========================= */
+
+(async function main() {
+  try {
+    const manifest = await loadManifest();
+
+    assert(typeof manifest.style_label === "string" && manifest.style_label.length > 0, "manifest.style_label missing");
+    assert(typeof manifest.reference_folder === "string" && manifest.reference_folder.length > 0, "manifest.reference_folder missing");
+    assert(Array.isArray(manifest.reference_files) && manifest.reference_files.length > 0, "manifest.reference_files must be non-empty");
+    assert(Array.isArray(manifest.models) && manifest.models.length > 0, "manifest.models must be non-empty");
+
+    // Path resolver supports:
+    // - manifest.base_url + folder names (recommended)
+    // - folder starting with "audio/..." (relative inside public/)
+    const baseUrl = (typeof manifest.base_url === "string" && manifest.base_url.length > 0)
+      ? manifest.base_url
+      : `${STATIC_BASE}`; // fallback
+
+    function resolvePath(folder, file) {
+      if (folder.startsWith("http://") || folder.startsWith("https://") || folder.startsWith("/")) {
+        return `${folder}/${file}`;
+      }
+      if (folder.startsWith("audio/")) {
+        return `${STATIC_BASE}/${folder}/${file}`; // /static/audio/...
+      }
+      return `${baseUrl.replace(/\/$/, "")}/${folder.replace(/^\//, "")}/${file}`;
+    }
+
+    // Pick one random reference file
+    const reference_file = randChoice(manifest.reference_files);
+    const reference_audio = resolvePath(manifest.reference_folder, reference_file);
+
+    // Pick one random clip per model
+    const chosenClips = manifest.models.map((m) => {
+      assert(typeof m.name === "string" && m.name.length > 0, "model.name missing");
+      assert(typeof m.folder === "string" && m.folder.length > 0, `model.folder missing for ${m.name}`);
+      assert(Array.isArray(m.files) && m.files.length > 0, `model.files must be non-empty for ${m.name}`);
+
+      const file = randChoice(m.files);
+      return {
+        clip_id: `${m.name}::${file}`,
+        model: m.name,
+        url: resolvePath(m.folder, file),
+        picked_file: file,
+        picked_folder: m.folder,
+      };
+    });
+
+    const jsPsych = initJsPsych({ display_element: "root" });
+
+    // Shuffle the model order
+    const randomized = jsPsych.randomization.shuffle(chosenClips);
+
+    // Preload only the selected files (optional but recommended)
+    const allAudio = [reference_audio, ...randomized.map(c => c.url)];
+
+    // Track play count per clip
+    const listenCountByClip = new Map();
+
+    const timeline = [];
+
+    timeline.push({
+      type: jsPsychPreload,
+      audio: allAudio,
+      show_progress_bar: true,
+      message: "<p>Loading audio…</p>",
+    });
+
+    timeline.push({
+      type: jsPsychHtmlButtonResponse,
+      stimulus: `
+        <h2>Listening similarity test</h2>
+        <p>You will hear a <strong>reference</strong> clip (<strong>${manifest.style_label}</strong>), then one generated clip per model.</p>
+        <p>Rate each generated clip from <strong>1 to 10</strong> for similarity to the reference style.</p>
+        <p class="small">Session id: <span class="mono">${participant_id}</span></p>
+      `,
+      choices: ["Continue"],
+    });
+
+    timeline.push({
+      type: jsPsychHtmlButtonResponse,
+      stimulus: `
+        <h2>Reference style: ${manifest.style_label}</h2>
+        <p>Listen to the reference. You can replay it as much as you want before starting.</p>
+        <audio controls preload="auto" src="${reference_audio}"></audio>
+      `,
+      choices: ["Start rating"],
+    });
+
+    // === Rating trials: manual Play button via <audio controls> + html-slider-response ===
+    randomized.forEach((c, idx) => {
+      timeline.push({
+        type: jsPsychHtmlSliderResponse,
+        stimulus: `
+          <p><strong>Play the clip, then rate similarity to the reference (${manifest.style_label}).</strong></p>
+          <audio id="trial-audio" controls preload="auto" src="${c.url}"></audio>
+        `,
+        min: 1,
+        max: 10,
+        step: 1,
+        slider_start: 5,
+        require_movement: true,
+        labels: ["1 (not similar)", "10 (very similar)"],
+        button_label: "Continue",
+        data: {
+          trial_tag: "rate_clip",
+          participant_id,
+          style_label: manifest.style_label,
+          reference_audio,
+          clip_id: c.clip_id,
+          model: c.model,
+          order_index: idx,
+          picked_folder: c.picked_folder,
+          picked_file: c.picked_file,
+          clip_url: c.url
+        },
+        on_load: () => {
+          const audio = document.getElementById("trial-audio");
+          if (!audio) return;
+
+          // Count every "play" press
+          const onPlay = () => {
+            const prev = listenCountByClip.get(c.clip_id) || 0;
+            listenCountByClip.set(c.clip_id, prev + 1);
+          };
+          audio.addEventListener("play", onPlay);
+
+          // Optional gating of Continue button
+          const btn =
+            document.querySelector("#jspsych-html-slider-response-next") ||
+            document.querySelector("button.jspsych-btn");
+
+          if (btn && (REQUIRE_FULL_LISTEN_BEFORE_CONTINUE || REQUIRE_PLAY_AT_LEAST_ONCE)) {
+            btn.disabled = true;
+          }
+
+          let playedOnce = false;
+
+          if (btn && REQUIRE_PLAY_AT_LEAST_ONCE) {
+            audio.addEventListener("play", () => {
+              playedOnce = true;
+              if (!REQUIRE_FULL_LISTEN_BEFORE_CONTINUE) btn.disabled = false;
+            }, { once: false });
+          }
+
+          if (btn && REQUIRE_FULL_LISTEN_BEFORE_CONTINUE) {
+            audio.addEventListener("ended", () => {
+              if (!REQUIRE_PLAY_AT_LEAST_ONCE || playedOnce) btn.disabled = false;
+            }, { once: false });
+          }
+        }
+      });
+    });
+
+    timeline.push({
+      type: jsPsychHtmlButtonResponse,
+      stimulus: `
+        <h2>Submit</h2>
+        <p>Click submit to send your ratings.</p>
+        <p class="small">If submission fails, you’ll get an error + a local backup download.</p>
+      `,
+      choices: ["Submit"],
+      on_finish: async () => {
+        const rows = jsPsych.data.get().filter({ trial_tag: "rate_clip" }).values();
+        assert(rows.length === randomized.length, `Expected ${randomized.length} rating trials, got ${rows.length}`);
+
+        const trials = rows.map(r => ({
+          clip_id: r.clip_id,
+          model: r.model,
+          rating: Number(r.response), // ensure numeric
+          order_index: r.order_index,
+          rt_ms: Math.max(0, Math.floor(r.rt)),
+          listen_count: listenCountByClip.get(r.clip_id) || 0,
+          picked_folder: r.picked_folder,
+          picked_file: r.picked_file
+        }));
+
+        const payload = {
+          participant_id,
+          style_label: manifest.style_label,
+          reference_audio,
+          trials,
+          meta: {
+            manifest_url: MANIFEST_URL,
+            user_agent: navigator.userAgent,
+            submitted_at_local: new Date().toISOString()
+          }
+        };
+
+        const resp = await fetch(SUBMIT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!resp.ok) {
+          const text = await resp.text().catch(() => "");
+          throw new Error(`Submit failed (${resp.status}): ${text || "no response body"}`);
+        }
+
+        document.getElementById("root").innerHTML = `
+          <div class="jspsych-content">
+            <h2>Submitted ✅</h2>
+            <p class="small">Thanks. You can close this tab.</p>
+          </div>
+        `;
+      }
+    });
+
+    window.addEventListener("unhandledrejection", (e) => {
+      const msg = (e.reason && e.reason.message) ? e.reason.message : String(e.reason || e);
+      const backupJson = jsPsych.data.get().json();
+      const blob = new Blob([backupJson], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+
+      document.getElementById("root").innerHTML = `
+        <div class="jspsych-content">
+          <h2 class="error">Submission error</h2>
+          <p class="error">${msg}</p>
+          <p>Download a backup and send it to the researcher:</p>
+          <p><a href="${url}" download="listening_test_backup.json">Download backup JSON</a></p>
+          <p class="small">Session id: <span class="mono">${participant_id}</span></p>
+        </div>
+      `;
+    });
+
+    jsPsych.run(timeline);
+
+  } catch (err) {
+    showFatal(err);
+  }
+})();
+</script>
+</body>
+</html>

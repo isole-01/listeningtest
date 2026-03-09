@@ -1,0 +1,10 @@
+{
+  "style_label": "Techno",
+  "base_url": "/static/audio",
+  "reference_folder": "reference",
+  "reference_files": ["ref1.mp3", "ref2.mp3"],
+  "models": [
+    { "name": "Model_A", "folder": "Model_A", "files": ["a1.mp3", "a2.mp3"] },
+    { "name": "Model_B", "folder": "Model_B", "files": ["b1.mp3", "b2.mp3"] }
+  ]
+}

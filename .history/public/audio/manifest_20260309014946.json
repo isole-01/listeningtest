@@ -1,0 +1,15 @@
+{
+  "style_label": "Blues Piano",
+  "base_url": "/static/audio",
+  "reference": {
+    "folder": "reference",
+    "files": ["piano-blues.mp3"]
+  },
+  "conditions": [
+    {
+      "model": "text",
+      "step": 0,
+      "files": ["0_0.wav", "0_1.wav", "0_2.wav"]
+    }
+  ]
+}

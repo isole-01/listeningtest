@@ -1,0 +1,16 @@
+{
+  "style_label": "Blues Piano",
+  "base_url": "/static/audio",
+  "reference": {
+    "folder": "reference",
+    "file": "ref.wav"
+  },
+  "trials": [
+    { "model": "reference", "step": 0,  "folder": "reference",  "file": "techno.wav" },
+    { "model": "reference", "step": 0,  "folder": "reference",  "file": "ref_test.wav" },
+    { "model": "text",  "step": 0,  "folder": "text",  "file": "0_0.wav" },
+    { "model": "text",  "step": 0,  "folder": "text",  "file": "0_1.wav" },
+    { "model": "text",  "step": 40, "folder": "text",  "file": "40_0.wav" },
+    { "model": "mixed", "step": 40, "folder": "mixed", "file": "40_1.wav" }
+  ]
+}
