@@ -97,6 +97,28 @@
       padding-left: 8px;
     }
 
+    .slider-cue-row {
+      width: 100%;
+      max-width: 360px;
+      margin: 8px auto 4px;
+      padding: 0 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+      line-height: 1.2;
+      opacity: 0.85;
+    }
+
+    .slider-cue-left {
+      text-align: left;
+    }
+
+    .slider-cue-right {
+      text-align: right;
+    }
+
     button.jspsych-btn {
       padding: 12px 16px;
     }
@@ -169,6 +191,17 @@
       `;
     }
 
+    function showThankYou() {
+      const root = document.getElementById("root");
+      if (!root) return;
+
+      root.innerHTML = `
+        <div class="jspsych-content">
+          <h2>Thank you</h2>
+        </div>
+      `;
+    }
+
     async function loadManifest() {
       const r = await fetch(MANIFEST_URL, { cache: "no-store" });
       if (!r.ok) {
@@ -198,8 +231,41 @@
       });
     }
 
+    function buildPayload(jsPsych, randomized, manifest, reference_audio, listenCountByClip) {
+      const rows = jsPsych.data.get().filter({ trial_tag: "rate_clip" }).values();
+
+      if (rows.length !== randomized.length) {
+        throw new Error(`Expected ${randomized.length} rating trials, got ${rows.length}`);
+      }
+
+      const trials = rows.map((r) => ({
+        clip_id: r.clip_id,
+        model: r.model,
+        step: r.step,
+        rating: Number(r.response),
+        order_index: r.order_index,
+        rt_ms: Math.max(0, Math.floor(r.rt)),
+        listen_count: listenCountByClip.get(r.clip_id) || 0,
+        picked_folder: r.picked_folder,
+        picked_file: r.picked_file,
+      }));
+
+      return {
+        participant_id,
+        style_label: manifest.style_label,
+        reference_audio,
+        trials,
+        meta: {
+          manifest_url: MANIFEST_URL,
+          user_agent: navigator.userAgent,
+          submitted_at_local: new Date().toISOString(),
+        },
+      };
+    }
+
     (async function main() {
       let jsPsych = null;
+      let submissionStarted = false;
 
       try {
         const manifest = await loadManifest();
@@ -237,9 +303,26 @@
 
         jsPsych = initJsPsych({
           display_element: document.getElementById("root"),
+          on_finish: () => {
+            if (submissionStarted) return;
+            submissionStarted = true;
+
+            try {
+              const payload = buildPayload(jsPsych, randomized, manifest, reference_audio, listenCountByClip);
+              showThankYou();
+
+              submitPayload(payload).catch((err) => {
+                const msg = err && err.message ? err.message : String(err);
+                showSubmitError(msg, payload);
+              });
+            } catch (err) {
+              showFatal(err);
+            }
+          },
         });
 
         const randomized = jsPsych.randomization.shuffle(chosenClips);
+        const totalExamples = randomized.length;
         const allAudio = [reference_audio, ...randomized.map((c) => c.url)];
 
         const listenCountByClip = new Map();
@@ -256,9 +339,12 @@
           type: jsPsychHtmlButtonResponse,
           stimulus: `
             <h2>Listening style-matching test</h2>
-            <p>You will first hear a <strong>reference example</strong> of the target style: <strong>${manifest.style_label}</strong>.</p>
-            <p>Then you will hear generated clips. For each one, rate <strong>how well it matches that style</strong>.</p>
-            <p>Do <strong>not</strong> judge whether the clip sounds identical to the reference example. The reference is only there to illustrate the style.</p>
+            <p>My name is <strong>Rahim Tooranian</strong>, and this listening test is part of my <strong>master's thesis evaluation</strong>.</p>
+            <p>We are building AI music generation systems that emulate musical styles, and this study evaluates how well generated clips match a target style.</p>
+            <p>You will first hear a <strong>reference clip</strong> that illustrates the target style: <strong>${manifest.style_label}</strong>.</p>
+            <p>You will then rate <strong>${totalExamples}</strong> generated ${totalExamples === 1 ? "example" : "examples"}.</p>
+            <p>For each example, listen to the clip and drag the slider to reflect how well you believe it matches the style of the reference clip you heard.</p>
+            <p>The generated clips do <strong>not</strong> need to sound identical to the reference. Please judge whether they belong to the same style.</p>
             <p class="small">Session id: <span class="mono">${participant_id}</span></p>
           `,
           choices: ["Continue"],
@@ -267,29 +353,34 @@
         timeline.push({
           type: jsPsychHtmlButtonResponse,
           stimulus: `
-            <h2>Target style: ${manifest.style_label}</h2>
-            <p>This reference clip is provided as an <strong>example of the target style</strong>.</p>
+            <h2>Reference clip</h2>
+            <p>The clip below is an example of the target style: <strong>${manifest.style_label}</strong>.</p>
+            <p>This is a good moment to adjust the volume.</p>
+            <p>After listening, continue to rate the ${totalExamples} ${totalExamples === 1 ? "example" : "examples"}.</p>
             <audio controls preload="auto" src="${reference_audio}"></audio>
           `,
-          choices: ["Start rating"],
+          choices: ["Start"],
         });
 
         randomized.forEach((c, idx) => {
           timeline.push({
             type: jsPsychHtmlSliderResponse,
             stimulus: `
-              <p><strong>How well does this clip match the style "${manifest.style_label}"?</strong></p>
-              <p class="small">Use the reference as an example of the style, not as something the clip should copy exactly.</p>
+              <p class="small">Example ${idx + 1} of ${totalExamples}</p>
+              <p><strong>Listen to the sound example below and drag the slider to reflect how well you believe it matches the style of the reference clip you heard.</strong></p>
+              <p class="small">Use the reference clip as an example of the target style, not as something the generated clip should copy exactly.</p>
               <audio id="trial-audio" controls preload="auto" src="${c.url}"></audio>
-              <p class="small">1 = doesn't match · 10 = matches very well</p>
+              <div class="slider-cue-row" aria-hidden="true">
+                <span class="slider-cue-left">← No match</span>
+                <span class="slider-cue-right">Strong match →</span>
+              </div>
             `,
             min: 1,
             max: 10,
             step: 1,
             slider_start: 5,
             require_movement: true,
-            //labels: ["1", "10"],
-            button_label: "Continue",
+            button_label: idx === totalExamples - 1 ? "Finish" : "Continue",
             data: {
               trial_tag: "rate_clip",
               participant_id,
@@ -343,66 +434,6 @@
               }
             },
           });
-        });
-
-        timeline.push({
-          type: jsPsychHtmlButtonResponse,
-          stimulus: `
-            <h2>Submit</h2>
-            <p>Click submit to send your ratings.</p>
-            <p class="small">If submission fails, a backup JSON download will appear.</p>
-          `,
-          choices: ["Submit"],
-          on_finish: () => {
-            const rows = jsPsych.data.get().filter({ trial_tag: "rate_clip" }).values();
-
-            if (rows.length !== randomized.length) {
-              throw new Error(`Expected ${randomized.length} rating trials, got ${rows.length}`);
-            }
-
-            const trials = rows.map((r) => ({
-              clip_id: r.clip_id,
-              model: r.model,
-              step: r.step,
-              rating: Number(r.response),
-              order_index: r.order_index,
-              rt_ms: Math.max(0, Math.floor(r.rt)),
-              listen_count: listenCountByClip.get(r.clip_id) || 0,
-              picked_folder: r.picked_folder,
-              picked_file: r.picked_file,
-            }));
-
-            const payload = {
-              participant_id,
-              style_label: manifest.style_label,
-              reference_audio,
-              trials,
-              meta: {
-                manifest_url: MANIFEST_URL,
-                user_agent: navigator.userAgent,
-                submitted_at_local: new Date().toISOString(),
-              },
-            };
-
-            submitPayload(payload)
-              .then(() => {
-                const root = document.getElementById("root");
-                if (!root) {
-                  throw new Error("Missing root element");
-                }
-
-                root.innerHTML = `
-                  <div class="jspsych-content">
-                    <h2>Submitted ✅</h2>
-                    <p class="small">Thanks. You can close this tab.</p>
-                  </div>
-                `;
-              })
-              .catch((err) => {
-                const msg = err && err.message ? err.message : String(err);
-                showSubmitError(msg, payload);
-              });
-          },
         });
 
         jsPsych.run(timeline);

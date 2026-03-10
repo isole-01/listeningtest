@@ -3,7 +3,7 @@
   "base_url": "/static/audio",
   "reference": {
     "folder": "reference",
-    "file": "ref.wav"
+    "file": "ref2.wav"
   },
   "trials": [
   { "model": "reference", "step": 0,   "folder": "reference", "file": "techno.wav" },
@@ -17,7 +17,7 @@
   { "model": "text",      "step": 40,  "folder": "text",      "file": "40_2.wav" },
   { "model": "text",      "step": 80,  "folder": "text",      "file": "80_0.wav" },
   { "model": "text",      "step": 80,  "folder": "text",      "file": "80_1.wav" },
-  { "model": "text",      "step": 80,  "folder": "text",      "file": "80_2.wav" },
+  { "model": "text",      "step": 80,  "folder": "text",      "file": "80_4.wav" },
   { "model": "text",      "step": 120, "folder": "text",      "file": "120_0.wav" },
   { "model": "text",      "step": 120, "folder": "text",      "file": "120_1.wav" },
   { "model": "text",      "step": 120, "folder": "text",      "file": "120_2.wav" },
