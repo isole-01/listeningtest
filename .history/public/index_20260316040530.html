@@ -342,9 +342,9 @@
             <p>My name is <strong>Rahim Tooranian</strong>, and this listening test is part of my <strong>master's thesis evaluation</strong>.</p>
             <p>We are building AI music generation systems that emulate musical styles, and this study evaluates how well generated clips match a target style.</p>
             <p>You will first hear a <strong>reference clip</strong> that illustrates the target style: <strong>${manifest.style_label}</strong>.</p>
-            <p>You will then rate <strong>${totalExamples}</strong> generated ${totalExamples === 1 ? "example" : "examples"} emulate that style.</p>
+            <p>You will then rate <strong>${totalExamples}</strong> generated ${totalExamples === 1 ? "example" : "examples"}.</p>
             <p>For each example, listen to the clip and drag the slider to reflect how well you believe it matches the style of the reference clip you heard.</p>
-            <p>The generated clips do <strong>not</strong> need to sound identical to the reference. Please judge how well they emulate that style.</p>
+            <p>The generated clips do <strong>not</strong> need to sound identical to the reference. Please judge whether they belong to the same style.</p>
             <p class="small">Session id: <span class="mono">${participant_id}</span></p>
           `,
           choices: ["Continue"],
@@ -356,7 +356,7 @@
             <h2>Reference clip</h2>
             <p>The clip below is an example of the target style: <strong>${manifest.style_label}</strong>.</p>
             <p>This is a good moment to adjust the volume.</p>
-            <p>After you feel you have an idea of what this style sounds like, click “Start” below.</p>
+            <p>After listening, continue to rate the ${totalExamples} ${totalExamples === 1 ? "example" : "examples"}.</p>
             <audio controls preload="auto" src="${reference_audio}"></audio>
           `,
           choices: ["Start"],
